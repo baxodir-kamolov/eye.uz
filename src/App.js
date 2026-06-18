@@ -1,4 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+const SUPABASE_URL = "https://ytypqmpmqouddmwfuekg.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl0eXBxbXBtcW91ZGRtd2Z1ZWtnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE3OTc0MDIsImV4cCI6MjA5NzM3MzQwMn0.vs3NYcF-HhgzLUz3jzgXATvkQvIik3hHlketxE9wEAs";
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ══════════════════════════════════════════════════════════
 //  RANGLAR
@@ -278,17 +283,9 @@ function RetseptPrint({ p, onClose }) {
 // ══════════════════════════════════════════════════════════
 export default function VisionEMR() {
   const [tab, setTab] = useState("dashboard");
-  const [patients, setPatients] = useState([{
-    ...emptyP(), id:1,
-    fish:"Nazarov Alisher Baxtiyorovich", tugildan:"1985-03-15",
-    jinsi:"Erkak", tel:"+998901234567", manzil:"Toshkent, Yunusobod",
-    tx_od:"Miop (qisqa ko'rlik)", tx_dar_od:"O'rtacha (−3.25 dan −6.0 D)",
-    mkb_od:"H52.1", iop_od:"17", iop_os:"18",
-    v_od_uz:"0.2", v_os_uz:"0.3",
-    holat:"Qabul qilindi", shifokor:"Dr. Karimov A.", sana:"2026-06-12",
-    koz_od:{"Shoxparda":"Shaffof","Linza":"Shaffof","Ko'z tubi":"Normal"},
-    koz_os:{"Shoxparda":"Shaffof","Linza":"Shaffof","Ko'z tubi":"Normal"},
-  }]);
+  const [patients, setPatients] = useState([]);
+  const [dbLoading, setDbLoading] = useState(true);
+  const [dbError, setDbError] = useState(false);
   const [form, setForm] = useState(null);
   const [edit, setEdit] = useState(false);
   const [sec, setSec] = useState("shaxsiy");
@@ -304,6 +301,33 @@ export default function VisionEMR() {
 
   const toast_ = (msg, type="success") => { setToast({msg,type}); setTimeout(()=>setToast(null),3000); };
 
+  // ── SUPABASE: MA'LUMOTLARNI YUKLASH ──
+  const loadPatients = useCallback(async () => {
+    setDbLoading(true);
+    const { data, error } = await supabase
+      .from("bemorlar")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (error) {
+      setDbError(true);
+      setDbLoading(false);
+      return;
+    }
+    // JSON maydonlarni parse qilish
+    const parsed = (data || []).map(p => ({
+      ...emptyP(),
+      ...p,
+      koz_od: typeof p.koz_od === "string" ? JSON.parse(p.koz_od || "{}") : (p.koz_od || {}),
+      koz_os: typeof p.koz_os === "string" ? JSON.parse(p.koz_os || "{}") : (p.koz_os || {}),
+      dorilar: typeof p.dorilar === "string" ? JSON.parse(p.dorilar || "[]") : (p.dorilar || []),
+      operatsiyalar: typeof p.operatsiyalar === "string" ? JSON.parse(p.operatsiyalar || "[]") : (p.operatsiyalar || []),
+    }));
+    setPatients(parsed);
+    setDbLoading(false);
+  }, []);
+
+  useEffect(() => { loadPatients(); }, [loadPatients]);
+
   const sf = (k,v) => setForm(prev => ({...prev,[k]:v}));
   const setKH = (eye,param,val) => {
     const k = eye==="od"?"koz_od":"koz_os";
@@ -313,16 +337,53 @@ export default function VisionEMR() {
   const openP = (p, e=false) => { setForm({...p}); setEdit(e); setSec("shaxsiy"); setTab("emr"); };
   const newP = () => { setForm(emptyP()); setEdit(true); setSec("shaxsiy"); setTab("emr"); };
 
-  const saveP = () => {
-    if (!form.id) {
-      const p = {...form, id:Date.now()};
-      setPatients(prev=>[p,...prev]);
-      setForm(p);
+  const saveP = async () => {
+    const payload = {
+      fish: form.fish, tugildan: form.tugildan, jinsi: form.jinsi,
+      tel: form.tel, tel2: form.tel2, manzil: form.manzil,
+      passport: form.passport, qon: form.qon, allergiya: form.allergiya,
+      kasb: form.kasb, shikoyat: form.shikoyat, anamnez: form.anamnez,
+      sana: form.sana, holat: form.holat, shifokor: form.shifokor,
+      koz_od: JSON.stringify(form.koz_od || {}),
+      koz_os: JSON.stringify(form.koz_os || {}),
+      koz_od_izoh: form.koz_od_izoh, koz_os_izoh: form.koz_os_izoh,
+      v_od_uz: form.v_od_uz, v_os_uz: form.v_os_uz,
+      v_od_yq: form.v_od_yq, v_os_yq: form.v_os_yq,
+      v_od_k: form.v_od_k, v_os_k: form.v_os_k,
+      iop_od: form.iop_od, iop_os: form.iop_os,
+      iop_vaqt: form.iop_vaqt, iop_usul: form.iop_usul,
+      r_od_sf: form.r_od_sf, r_od_si: form.r_od_si, r_od_ak: form.r_od_ak, r_od_ad: form.r_od_ad,
+      r_os_sf: form.r_os_sf, r_os_si: form.r_os_si, r_os_ak: form.r_os_ak, r_os_ad: form.r_os_ad,
+      schirmer_od: form.schirmer_od, schirmer_os: form.schirmer_os,
+      but_od: form.but_od, but_os: form.but_os,
+      pachim_od: form.pachim_od, pachim_os: form.pachim_os,
+      biomikro: form.biomikro, oftalmo: form.oftalmo, perimetr: form.perimetr,
+      tx_od: form.tx_od, tx_os: form.tx_os,
+      tx_dar_od: form.tx_dar_od, tx_dar_os: form.tx_dar_os,
+      mkb_od: form.mkb_od, mkb_os: form.mkb_os,
+      klinik_izoh: form.klinik_izoh, davolash: form.davolash,
+      nazorat_sana: form.nazorat_sana, nazorat_izoh: form.nazorat_izoh,
+      retsept_tur: form.retsept_tur,
+      rt_od_sf: form.rt_od_sf, rt_od_si: form.rt_od_si, rt_od_ak: form.rt_od_ak, rt_od_ad: form.rt_od_ad, rt_od_pd: form.rt_od_pd,
+      rt_os_sf: form.rt_os_sf, rt_os_si: form.rt_os_si, rt_os_ak: form.rt_os_ak, rt_os_ad: form.rt_os_ad, rt_os_pd: form.rt_os_pd,
+      retsept_izoh: form.retsept_izoh,
+      dorilar: JSON.stringify(form.dorilar || []),
+      operatsiyalar: JSON.stringify(form.operatsiyalar || []),
+    };
+
+    if (!form.id || typeof form.id === "number") {
+      // Yangi bemor
+      const { data, error } = await supabase.from("bemorlar").insert([payload]).select().single();
+      if (error) { toast_("Xatolik: " + error.message, "danger"); return; }
+      setForm({ ...form, id: data.id });
     } else {
-      setPatients(prev=>prev.map(p=>p.id===form.id?form:p));
+      // Mavjud bemor yangilash
+      const { error } = await supabase.from("bemorlar").update(payload).eq("id", form.id);
+      if (error) { toast_("Xatolik: " + error.message, "danger"); return; }
     }
     setEdit(false);
     toast_("Saqlandi ✓");
+    loadPatients();
   };
 
   const filtered = patients.filter(p =>
@@ -331,6 +392,16 @@ export default function VisionEMR() {
     (p.tx_od||"").toLowerCase().includes(search.toLowerCase()) ||
     (p.tx_os||"").toLowerCase().includes(search.toLowerCase())
   );
+
+  const deleteP = async (id) => {
+    if (typeof id !== "number") {
+      const { error } = await supabase.from("bemorlar").delete().eq("id", id);
+      if (error) { toast_("O'chirishda xatolik", "danger"); return; }
+    }
+    setPatients(prev => prev.filter(p => p.id !== id));
+    if (form?.id === id) { setForm(null); setTab("patients"); }
+    toast_("Bemor o'chirildi", "danger");
+  };
 
   const stats = {
     jami:patients.length,
@@ -499,6 +570,8 @@ export default function VisionEMR() {
           <div>
             <h1 style={{ fontSize:26,fontWeight:800,letterSpacing:"-0.5px",marginBottom:4 }}>Bosh sahifa</h1>
             <p style={{ color:C.textLight,fontSize:14,marginBottom:24 }}>{new Date().toLocaleDateString("uz-UZ",{weekday:"long",year:"numeric",month:"long",day:"numeric"})}</p>
+            {dbError && <div style={{ background:C.redLight,border:`1px solid ${C.red}`,borderRadius:10,padding:"12px 18px",marginBottom:16,fontSize:14,color:C.red }}>⚠️ Supabase ulanmadi. Internet aloqasini tekshiring.</div>}
+            {dbLoading ? <div style={{ textAlign:"center",padding:60,color:C.textFaint }}><div style={{ fontSize:32,marginBottom:8 }}>⏳</div>Ma'lumotlar yuklanmoqda...</div> : (<>
             <div style={{ display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:14,marginBottom:24 }}>
               {[
                 {l:"Jami",v:stats.jami,icon:"👥",c:C.primary,bg:C.primaryLight},
@@ -546,6 +619,7 @@ export default function VisionEMR() {
                 ))}
               </div>
             </div>
+            </>)}
           </div>
         )}
 
@@ -592,7 +666,7 @@ export default function VisionEMR() {
                       <td style={{ padding:"13px 16px",fontSize:12,color:C.textFaint }}>{p.sana}</td>
                       <td style={{ padding:"13px 16px" }}><SBadge status={p.holat}/></td>
                       <td style={{ padding:"13px 16px" }}>
-                        <button onClick={e=>{e.stopPropagation();if(window.confirm("O'chirishni tasdiqlaysizmi?"))setPatients(prev=>prev.filter(x=>x.id!==p.id));}} style={{ background:C.redLight,color:C.red,border:"none",borderRadius:6,padding:"4px 10px",fontSize:12,cursor:"pointer",fontWeight:600 }}>O'chir</button>
+                        <button onClick={e=>{e.stopPropagation();if(window.confirm("O'chirishni tasdiqlaysizmi?"))deleteP(p.id);}} style={{ background:C.redLight,color:C.red,border:"none",borderRadius:6,padding:"4px 10px",fontSize:12,cursor:"pointer",fontWeight:600 }}>O'chir</button>
                       </td>
                     </tr>
                   ))}
